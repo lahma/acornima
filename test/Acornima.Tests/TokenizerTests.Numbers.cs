@@ -8,21 +8,19 @@ using Xunit;
 namespace Acornima.Tests;
 
 /// <summary>
-/// Checks that a numeric literal scans to the <see cref="double"/> nearest the value it denotes, which is
-/// what ECMA-262 asks for (https://tc39.es/ecma262/#sec-literals-numeric-literals) and what
-/// https://github.com/adams85/acornima/issues/53 reported that the three number reading branches of the
-/// tokenizer did not do.
+/// Verifies that numeric literals are parsed to a double per the <see href="https://tc39.es/ecma262/#sec-literals-numeric-literals">ECMAScript specification</see>
+/// including the cases from <see href="https://github.com/adams85/acornima/issues/53">this issue</see>.
 /// </summary>
 /// <remarks>
-/// The expected value never comes from the runtime's own parsing or conversions - those are the things under
-/// test, and .NET Framework gets both of them wrong - but from an exact oracle: the literal is turned into
-/// the rational number it denotes, and the nearest double is found by searching the bit patterns.
+/// Expected values never come from the runtime's own parsing or conversions - those are the things under test,
+/// and .NET Framework gets both of them wrong - but from an exact oracle: the literal is turned into the rational number it denotes,
+/// and the nearest double is determined by searching the bit patterns.
 /// </remarks>
-public class NumericLiteralTests
+public partial class TokenizerTests
 {
     private const int LiteralCountPerShape = 2000;
 
-    #region The values named in the issue
+    #region The values mentioned in the issue
 
     [Theory]
     // All of these are 12345678901234567890, whose nearest double is 12345678901234567168.
@@ -52,7 +50,7 @@ public class NumericLiteralTests
 
     #endregion
 
-    #region The same value in every radix
+    #region The same values in every radix
 
     [Theory]
     [InlineData("8000000000000401")] // 2^63 + 1025, the smallest operand the ulong conversion differs on
@@ -83,7 +81,7 @@ public class NumericLiteralTests
 
     #endregion
 
-    #region Single literals worth naming
+    #region Basic cases
 
     [Theory]
     [InlineData("0")]
@@ -98,6 +96,8 @@ public class NumericLiteralTests
     [InlineData("1e-7")]
     [InlineData(".5")]
     [InlineData("08")] // a decimal with a leading zero
+    [InlineData("08.")] // a decimal with a leading zero and lone decimal separator
+    [InlineData("08.e0")] // a decimal with a leading zero, lone decimal separator and exponent
     [InlineData("08.125e2")]
     [InlineData("0123")] // legacy octal
     [InlineData("9007199254740993")] // 2^53 + 1, a tie that goes to even
@@ -117,7 +117,10 @@ public class NumericLiteralTests
     [InlineData("7.8459735791271921e65")] // a 17-digit significand that needs the exact path
     [InlineData("3.518437208883201171875e13")] // a 22-digit significand
     [InlineData("1234567890123456789012345678901234567890")]
+    [InlineData("1234567890123456789012345678901234567890.")]
+    [InlineData("1234567890123456789012345678901234567890.e0")]
     [InlineData("0.000000000000000000000000000000000000000000001234567890123456789")]
+    [InlineData(".000000000000000000000000000000000000000000001234567890123456789")]
     [InlineData("1_0.5_0e1_0")]
     public void ScansTheNearestDouble(string literal)
     {
@@ -239,12 +242,12 @@ public class NumericLiteralTests
     [Fact]
     public void ConvertsEveryUInt64ToTheNearestDouble()
     {
-        const int OperandCount = 20000;
+        const int operandCount = 20000;
 
         var random = new Random(12);
         var failureCount = 0;
 
-        for (var i = 0; i < OperandCount; i++)
+        for (var i = 0; i < operandCount; i++)
         {
             // The affected octave: below 2^63 the JIT reaches the signed conversion, which every runtime
             // rounds correctly.
@@ -256,7 +259,7 @@ public class NumericLiteralTests
             }
         }
 
-        Assert.True(failureCount == 0, $"{failureCount} of {OperandCount} operands in [2^63, 2^64) do not convert to the nearest double");
+        Assert.True(failureCount == 0, $"{failureCount} of {operandCount} operands in [2^63, 2^64) do not convert to the nearest double");
     }
 
     [Fact]
@@ -272,6 +275,8 @@ public class NumericLiteralTests
     }
 
     #endregion
+
+    #region Helpers
 
     #region Scanning
 
@@ -446,7 +451,7 @@ public class NumericLiteralTests
 
     private static string ToRadix(BigInteger value, int radix)
     {
-        const string Digits = "0123456789abcdef";
+        const string digits = "0123456789abcdef";
 
         if (value.IsZero)
         {
@@ -456,7 +461,7 @@ public class NumericLiteralTests
         var text = new StringBuilder();
         while (!value.IsZero)
         {
-            text.Insert(0, Digits[(int)(value % radix)]);
+            text.Insert(0, digits[(int)(value % radix)]);
             value /= radix;
         }
         return text.ToString();
@@ -529,21 +534,23 @@ public class NumericLiteralTests
 
     private static string RadixDigits(Random random, int radix, int count)
     {
-        const string Digits = "0123456789abcdef";
+        const string digits = "0123456789abcdef";
 
-        var digits = new char[count];
-        digits[0] = Digits[1 + random.Next(radix - 1)];
+        var buffer = new char[count];
+        buffer[0] = digits[1 + random.Next(radix - 1)];
         for (var i = 1; i < count; i++)
         {
-            digits[i] = Digits[random.Next(radix)];
+            buffer[i] = digits[random.Next(radix)];
         }
-        return new string(digits);
+        return new string(buffer);
     }
 
     private static ulong NextUInt64(Random random)
     {
         return ((ulong)(uint)random.Next() << 32) | (uint)random.Next();
     }
+
+    #endregion
 
     #endregion
 }
