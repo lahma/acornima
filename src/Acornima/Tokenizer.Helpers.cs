@@ -607,10 +607,13 @@ public partial class Tokenizer
                     return true;
                 }
             }
-            else if (exponent >= -maxExactPowerOfTen)
+            else
             {
-                value = UInt64ToDouble(significand) / ExactPowersOfTen[(int)-exponent];
-                return true;
+                if (exponent >= -maxExactPowerOfTen)
+                {
+                    value = UInt64ToDouble(significand) / ExactPowersOfTen[(int)-exponent];
+                    return true;
+                }
             }
 
             value = 0;
@@ -648,7 +651,7 @@ public partial class Tokenizer
 
                     if (ch == '.')
                     {
-                        Debug.Assert(!inFractionalPart, $"Invalid digit in number: U+{(ushort)ch:X4}");
+                        Debug.Assert(!inFractionalPart, $"Invalid significand: {slice.ToString()}");
                         inFractionalPart = true;
                         continue;
                     }
@@ -801,7 +804,7 @@ public partial class Tokenizer
 #if NETSTANDARD2_1_OR_GREATER || NETCOREAPP2_1_OR_GREATER
         var span = MemoryMarshal.CreateSpan(ref value, 1);
 #else
-        Span<ulong> span = stackalloc ulong[] { value };
+        Span<ulong> span = stackalloc[] { value };
 #endif
 
         var bitLength = GetBitLength(MemoryMarshal.AsBytes(span), BitConverter.IsLittleEndian);
