@@ -807,6 +807,9 @@ public partial class Tokenizer
 
     private static int GetBitLength(ulong value)
     {
+#if NETCOREAPP3_0_OR_GREATER
+        return 64 - BitOperations.LeadingZeroCount(value);
+#else
 #if NETSTANDARD2_1_OR_GREATER || NETCOREAPP2_1_OR_GREATER
         var span = MemoryMarshal.CreateSpan(ref value, 1);
 #else
@@ -816,6 +819,7 @@ public partial class Tokenizer
         var bitLength = GetBitLength(MemoryMarshal.AsBytes(span), BitConverter.IsLittleEndian);
         Debug.Assert(bitLength <= 64);
         return (int)bitLength;
+#endif
     }
 
 #if NET5_0_OR_GREATER
@@ -858,6 +862,7 @@ public partial class Tokenizer
 #endif
     }
 
+#if !NET5_0_OR_GREATER
     private static long GetBitLength(ReadOnlySpan<byte> bytes, bool isLittleEndian)
     {
         long bitLength;
@@ -882,6 +887,7 @@ public partial class Tokenizer
 
         return bitLength;
     }
+#endif
 
     #endregion
 }
