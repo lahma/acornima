@@ -2,12 +2,12 @@ using System;
 using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using Acornima.Helpers;
 
-#if !NET5_0_OR_GREATER && (NETSTANDARD2_1_OR_GREATER || NETCOREAPP2_1_OR_GREATER)
+#pragma warning disable IDE0005 // Remove unnecessary import
 using System.Buffers;
-#endif
+using System.Runtime.InteropServices;
+#pragma warning restore IDE0005 // Remove unnecessary import
 
 namespace Acornima;
 
@@ -372,13 +372,16 @@ public partial class Tokenizer
         for (var i = 0; i < slice.Length; i++)
         {
             var ch = slice[i];
-            if (ch == '_')
-            {
-                continue;
-            }
-
             var digitValue = GetDigitValue(ch);
-            Debug.Assert(digitValue < radix, $"Invalid digit in number: U+{(ushort)ch:X4}");
+            if (digitValue >= radix)
+            {
+                if (ch == '_')
+                {
+                    continue;
+                }
+
+                Debug.Fail($"Invalid digit in number: U+{(ushort)ch:X4}");
+            }
 
             if (significand <= significandLimit)
             {

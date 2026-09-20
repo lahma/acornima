@@ -238,19 +238,19 @@ public sealed partial class Tokenizer : ITokenizer
 
             case '0':
                 var nextCh = CharCodeAtPosition(1);
-                if (nextCh is 'x' or 'X')
+                if ((nextCh | 0x20) == 'x')
                 {
                     return ReadRadixNumber(16); // '0x', '0X' - hex number
                 }
 
                 if (_options._ecmaVersion >= EcmaVersion.ES6)
                 {
-                    if (nextCh is 'o' or 'O')
+                    if ((nextCh | 0x20) == 'o')
                     {
                         return ReadRadixNumber(8); // '0o', '0O' - octal number
                     }
 
-                    if (nextCh is 'b' or 'B')
+                    if ((nextCh | 0x20) == 'b')
                     {
                         return ReadRadixNumber(2); // '0b', '0B' - binary number
                     }
@@ -838,55 +838,55 @@ public sealed partial class Tokenizer : ITokenizer
 
     // Read an integer in the given radix. Return the number of digits read,
     // excluding the potential separators.
-    internal int ReadInt(out ulong value, out bool overflow, byte radix, bool allowSeparators = false, bool startsWithZero = false, int len = int.MaxValue)
+    internal int ReadInt(out ulong value, out bool overflow, byte radix, byte separator = (byte)'0', bool startsWithZero = false, int len = int.MaxValue)
     {
         // https://github.com/acornjs/acorn/blob/8.11.3/acorn/src/tokenize.js > `pp.readInt = function`
 
         value = 0;
         overflow = false;
-        char lastCh = default;
+        var hasReadSeparator = false;
         var numDigits = 0;
         for (int i = 0, e = len; i < e; i++, _position++)
         {
             var ch = CharCodeAtPosition();
 
-            if (allowSeparators && ch == '_')
-            {
-                if (startsWithZero)
-                {
-                    // RaiseRecoverable(_position, "Numeric separator is not allowed in legacy octal numeric literals"); // original acornjs error reporting
-                    if (i > 1)
-                    {
-                        RaiseRecoverable(_position, InvalidOrUnexpectedToken);
-                    }
-                    else
-                    {
-                        RaiseRecoverable(_position, ZeroDigitNumericSeparator);
-                    }
-                }
-                else if (i == 0)
-                {
-                    // RaiseRecoverable(_position, "Numeric separator is not allowed at the first of digits"); // original acornjs error reporting
-                    RaiseRecoverable(_start, InvalidOrUnexpectedToken);
-                }
-
-                if (lastCh == '_')
-                {
-                    // RaiseRecoverable(_position, "Numeric separator must be exactly one underscore"); // original acornjs error reporting
-                    RaiseRecoverable(_position, ContinuousNumericSeparator);
-                }
-
-                lastCh = (char)ch;
-                continue;
-            }
-
             var digitValue = GetDigitValue(ch);
             if (digitValue >= radix)
             {
+                if (ch == separator)
+                {
+                    if (startsWithZero)
+                    {
+                        // RaiseRecoverable(_position, "Numeric separator is not allowed in legacy octal numeric literals"); // original acornjs error reporting
+                        if (i > 1)
+                        {
+                            RaiseRecoverable(_position, InvalidOrUnexpectedToken);
+                        }
+                        else
+                        {
+                            RaiseRecoverable(_position, ZeroDigitNumericSeparator);
+                        }
+                    }
+                    else if (i == 0)
+                    {
+                        // RaiseRecoverable(_position, "Numeric separator is not allowed at the first of digits"); // original acornjs error reporting
+                        RaiseRecoverable(_start, InvalidOrUnexpectedToken);
+                    }
+
+                    if (hasReadSeparator)
+                    {
+                        // RaiseRecoverable(_position, "Numeric separator must be exactly one underscore"); // original acornjs error reporting
+                        RaiseRecoverable(_position, ContinuousNumericSeparator);
+                    }
+
+                    hasReadSeparator = true;
+                    continue;
+                }
+
                 break;
             }
 
-            lastCh = (char)ch;
+            hasReadSeparator = false;
             if (!overflow)
             {
                 try { value = checked(value * radix + digitValue); }
@@ -896,7 +896,7 @@ public sealed partial class Tokenizer : ITokenizer
             numDigits++;
         }
 
-        if (allowSeparators && lastCh == '_')
+        if (hasReadSeparator)
         {
             // RaiseRecoverable(_position - 1, "Numeric separator is not allowed at the last of digits"); // original acornjs error reporting
             RaiseRecoverable(_position - 1, TrailingNumericSeparator);
@@ -911,8 +911,8 @@ public sealed partial class Tokenizer : ITokenizer
 
         _position += 2; // 0x
 
-        var allowSeparators = _options._ecmaVersion >= EcmaVersion.ES12;
-        if (!(ReadInt(out var intValue, out var overflow, radix, allowSeparators) > 0))
+        var separator = _options._ecmaVersion >= EcmaVersion.ES12 ? (byte)'_' : (byte)'0'; // '0' indicates that separators are not allowed
+        if (!(ReadInt(out var intValue, out var overflow, radix, separator) > 0))
         {
             // Raise(_start + 2, "Expected number in radix " + radix); // original acornjs error reporting
             Unexpected();
@@ -966,20 +966,21 @@ public sealed partial class Tokenizer : ITokenizer
 
         int numDigits, nextCh;
         ulong intValue;
-        bool overflow, allowSeparators = _options._ecmaVersion >= EcmaVersion.ES12;
+        bool overflow;
+        var separator = _options._ecmaVersion >= EcmaVersion.ES12 ? (byte)'_' : (byte)'0'; // '0' indicates that separators are not allowed
         TokenValue val;
         ReadOnlySpan<char> slice;
 
         if (startsWithZero)
         {
-            numDigits = ReadInt(out intValue, out overflow, radix: 8, allowSeparators, startsWithZero: true);
+            numDigits = ReadInt(out intValue, out overflow, radix: 8, separator, startsWithZero: true);
             Debug.Assert(numDigits > 0);
 
             nextCh = CharCodeAtPosition();
             if (nextCh is '8' or '9') // literals like 08 are valid in non-strict mode, so reparse them as a decimal number
             {
                 _position = start;
-                numDigits = ReadInt(out intValue, out overflow, radix: 10, allowSeparators, startsWithZero: true);
+                numDigits = ReadInt(out intValue, out overflow, radix: 10, separator, startsWithZero: true);
                 Debug.Assert(numDigits > 0);
 
                 nextCh = CharCodeAtPosition();
@@ -1032,7 +1033,7 @@ public sealed partial class Tokenizer : ITokenizer
         }
         else
         {
-            numDigits = ReadInt(out intValue, out overflow, radix: 10, allowSeparators);
+            numDigits = ReadInt(out intValue, out overflow, radix: 10, separator);
             Debug.Assert(numDigits > 0);
             nextCh = CharCodeAtPosition();
         }
@@ -1065,14 +1066,14 @@ public sealed partial class Tokenizer : ITokenizer
         if (nextCh == '.')
         {
             ++_position;
-            ReadInt(out _, out _, radix: 10, allowSeparators);
+            ReadInt(out _, out _, radix: 10, separator);
             nextCh = CharCodeAtPosition();
         }
 
         var significandEnd = _position;
         ulong exponent;
 
-        if (nextCh is 'e' or 'E')
+        if ((nextCh | 0x20) == 'e')
         {
             ++_position;
             nextCh = CharCodeAtPosition();
@@ -1082,7 +1083,7 @@ public sealed partial class Tokenizer : ITokenizer
             {
                 ++_position;
             }
-            if (!(ReadInt(out exponent, out _, radix: 10, allowSeparators) > 0))
+            if (!(ReadInt(out exponent, out _, radix: 10, separator) > 0))
             {
                 // Raise(start, "Invalid number"); // original acornjs error reporting
                 Unexpected(start);
